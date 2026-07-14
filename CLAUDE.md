@@ -31,7 +31,7 @@ There is no lint/format tooling configured in this repo.
 ## Architecture
 
 - **`app.py`** — single-file Flask app; all routes are defined here as top-level `@app.route` view functions (no blueprints). Currently implemented: `/`, `/register`, `/login`, `/terms`. Stubbed-out routes (`/logout`, `/profile`, `/expenses/add`, `/expenses/<id>/edit`, `/expenses/<id>/delete`) return plain placeholder strings and are meant to be built out.
-- **`database/db.py`** — intended to hold `get_db()` (SQLite connection with `row_factory` and foreign keys enabled), `init_db()` (creates tables with `CREATE TABLE IF NOT EXISTS`), and `seed_db()` (sample dev data). Not yet implemented. The SQLite file (`expense_tracker.db`) is gitignored and created locally.
+- **`database/db.py`** — intended to hold `get_db()` (SQLite connection with `row_factory` and foreign keys enabled), `init_db()` (creates tables with `CREATE TABLE IF NOT EXISTS`), and `seed_db()` (sample dev data). Not yet implemented. The SQLite file (`spendly.db`) is gitignored and created locally.
 - **`templates/`** — Jinja2 templates. `base.html` is the shared layout (navbar, footer, font/CSS includes) that all pages extend via `{% block title %}` / `{% block content %}` / `{% block scripts %}`. Auth pages (`login.html`, `register.html`) follow a shared `auth-section` / `auth-container` / `auth-card` markup pattern with an `{% if error %}` slot for server-side form errors.
 - **`static/css/style.css`** — single global stylesheet for the whole app (no per-page CSS files).
 - **`static/js/main.js`** — single global JS file included on every page via `base.html`.
