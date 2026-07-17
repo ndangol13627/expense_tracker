@@ -1,9 +1,10 @@
 import sqlite3
+from datetime import datetime
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, session
 from werkzeug.security import check_password_hash
 
-from database.db import init_db, seed_db, create_user, get_user_by_email
+from database.db import init_db, seed_db, create_user, get_user_by_email, get_user_by_id, get_expenses_by_user
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-key-change-in-production"
@@ -11,6 +12,18 @@ app.secret_key = "dev-secret-key-change-in-production"
 with app.app_context():
     init_db()
     seed_db()
+
+CATEGORY_SLUGS = {
+    "Food": "food",
+    "Transport": "transport",
+    "Bills": "bills",
+    "Health": "health",
+    "Entertainment": "entertainment",
+    "Shopping": "shopping",
+    "Other": "other",
+}
+
+MAX_TRANSACTIONS_SHOWN = 10
 
 
 # ------------------------------------------------------------------ #
@@ -100,9 +113,76 @@ def logout():
 # Placeholder routes — students will implement these                  #
 # ------------------------------------------------------------------ #
 
-@app.route("/profile")
+@app.route("/profile", methods=["GET"])
 def profile():
-    return "Profile page — coming in Step 4"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_row = get_user_by_id(session["user_id"])
+    if user_row is None:
+        session.clear()
+        return redirect(url_for("login"))
+
+    name = user_row["name"]
+    created_at = datetime.strptime(user_row["created_at"], "%Y-%m-%d %H:%M:%S")
+
+    user = {
+        "name": name,
+        "email": user_row["email"],
+        "initials": "".join(part[0] for part in name.split()[:2]).upper(),
+        "member_since": created_at.strftime("%B %d, %Y"),
+    }
+
+    expenses = get_expenses_by_user(session["user_id"])
+
+    total_spent = sum(row["amount"] for row in expenses)
+    transaction_count = len(expenses)
+
+    category_totals = {}
+    for row in expenses:
+        category_totals[row["category"]] = category_totals.get(row["category"], 0) + row["amount"]
+
+    top_category = max(category_totals, key=category_totals.get) if category_totals else "—"
+
+    stats = [
+        {"label": "Total spent", "value": f"${total_spent:,.2f}"},
+        {"label": "Transactions", "value": str(transaction_count)},
+        {"label": "Top category", "value": top_category},
+    ]
+
+    transactions = []
+    for row in expenses[:MAX_TRANSACTIONS_SHOWN]:
+        row_date = datetime.strptime(row["date"], "%Y-%m-%d").strftime("%b %d, %Y")
+        slug = CATEGORY_SLUGS.get(row["category"], "other")
+        transactions.append({
+            "date": row_date,
+            "description": row["description"] or "—",
+            "category": row["category"],
+            "amount": f"${row['amount']:,.2f}",
+            "badge_class": f"cat-badge-{slug}",
+        })
+
+    categories = []
+    for category, amount in sorted(category_totals.items(), key=lambda item: item[1], reverse=True):
+        percent = round((amount / total_spent) * 100 / 5) * 5 if total_spent else 0
+        slug = CATEGORY_SLUGS.get(category, "other")
+        categories.append({
+            "name": category,
+            "amount": f"${amount:,.2f}",
+            "percent": percent,
+            "bar_class": f"cat-bar-{slug}",
+            "width_class": f"bar-w-{percent}",
+        })
+
+    return render_template(
+        "profile.html",
+        user=user,
+        stats=stats,
+        transactions=transactions,
+        categories=categories,
+        transaction_count=transaction_count,
+        transactions_shown=len(transactions),
+    )
 
 
 @app.route("/expenses/add")
