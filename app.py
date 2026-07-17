@@ -90,7 +90,7 @@ def login():
         session["user_id"] = user["id"]
         session["user_name"] = user["name"]
         flash("Signed in successfully.", "success")
-        return redirect(url_for("landing"))
+        return redirect(url_for("profile"))
 
     if request.method == "GET":
         return render_template("login.html")
