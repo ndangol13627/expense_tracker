@@ -4,7 +4,8 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, session
 from werkzeug.security import check_password_hash
 
-from database.db import init_db, seed_db, create_user, get_user_by_email, get_user_by_id, get_expenses_by_user
+from database.db import init_db, seed_db, create_user, get_user_by_email
+from database.queries import get_user_by_id, get_summary_stats, get_recent_transactions, get_category_breakdown
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-key-change-in-production"
@@ -117,40 +118,27 @@ def profile():
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
-    user_row = get_user_by_id(session["user_id"])
-    if user_row is None:
+    profile_user = get_user_by_id(session["user_id"])
+    if profile_user is None:
         session.clear()
         return redirect(url_for("login"))
 
-    name = user_row["name"]
-    created_at = datetime.strptime(user_row["created_at"], "%Y-%m-%d %H:%M:%S")
-
     user = {
-        "name": name,
-        "email": user_row["email"],
-        "initials": "".join(part[0] for part in name.split()[:2]).upper(),
-        "member_since": created_at.strftime("%B %d, %Y"),
+        "name": profile_user["name"],
+        "email": profile_user["email"],
+        "initials": "".join(part[0] for part in profile_user["name"].split()[:2]).upper(),
+        "member_since": profile_user["member_since"],
     }
 
-    expenses = get_expenses_by_user(session["user_id"])
-
-    total_spent = sum(row["amount"] for row in expenses)
-    transaction_count = len(expenses)
-
-    category_totals = {}
-    for row in expenses:
-        category_totals[row["category"]] = category_totals.get(row["category"], 0) + row["amount"]
-
-    top_category = max(category_totals, key=category_totals.get) if category_totals else "—"
-
+    summary = get_summary_stats(session["user_id"])
     stats = [
-        {"label": "Total spent", "value": f"${total_spent:,.2f}"},
-        {"label": "Transactions", "value": str(transaction_count)},
-        {"label": "Top category", "value": top_category},
+        {"label": "Total spent", "value": f"${summary['total_spent']:,.2f}"},
+        {"label": "Transactions", "value": str(summary["transaction_count"])},
+        {"label": "Top category", "value": summary["top_category"]},
     ]
 
     transactions = []
-    for row in expenses[:MAX_TRANSACTIONS_SHOWN]:
+    for row in get_recent_transactions(session["user_id"], limit=MAX_TRANSACTIONS_SHOWN):
         row_date = datetime.strptime(row["date"], "%Y-%m-%d").strftime("%b %d, %Y")
         slug = CATEGORY_SLUGS.get(row["category"], "other")
         transactions.append({
@@ -162,15 +150,15 @@ def profile():
         })
 
     categories = []
-    for category, amount in sorted(category_totals.items(), key=lambda item: item[1], reverse=True):
-        percent = round((amount / total_spent) * 100 / 5) * 5 if total_spent else 0
-        slug = CATEGORY_SLUGS.get(category, "other")
+    for cat in get_category_breakdown(session["user_id"]):
+        slug = CATEGORY_SLUGS.get(cat["name"], "other")
+        width_percent = round(cat["pct"] / 5) * 5
         categories.append({
-            "name": category,
-            "amount": f"${amount:,.2f}",
-            "percent": percent,
+            "name": cat["name"],
+            "amount": f"${cat['amount']:,.2f}",
+            "percent": cat["pct"],
             "bar_class": f"cat-bar-{slug}",
-            "width_class": f"bar-w-{percent}",
+            "width_class": f"bar-w-{width_percent}",
         })
 
     return render_template(
@@ -179,7 +167,7 @@ def profile():
         stats=stats,
         transactions=transactions,
         categories=categories,
-        transaction_count=transaction_count,
+        transaction_count=summary["transaction_count"],
         transactions_shown=len(transactions),
     )
 
