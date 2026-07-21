@@ -1,0 +1,1 @@
+Jinja2 templates. `base.html` is the shared layout (navbar, footer, font/CSS includes) that all pages extend via `{% block title %}` / `{% block content %}` / `{% block scripts %}`. Auth pages (`login.html`, `register.html`) follow a shared `auth-section` / `auth-container` / `auth-card` markup pattern with an `{% if error %}` slot for server-side form errors.
