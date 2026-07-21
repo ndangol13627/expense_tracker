@@ -16,8 +16,8 @@ def get_user_by_id(user_id):
     }
 
 
-def get_summary_stats(user_id):
-    expenses = get_expenses_by_user(user_id)
+def get_summary_stats(user_id, date_from=None, date_to=None):
+    expenses = get_expenses_by_user(user_id, date_from, date_to)
 
     total_spent = sum(row["amount"] for row in expenses)
     transaction_count = len(expenses)
@@ -35,8 +35,8 @@ def get_summary_stats(user_id):
     }
 
 
-def get_recent_transactions(user_id, limit=10):
-    expenses = get_expenses_by_user(user_id)
+def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
+    expenses = get_expenses_by_user(user_id, date_from, date_to)
     return [
         {
             "date": row["date"],
@@ -48,8 +48,8 @@ def get_recent_transactions(user_id, limit=10):
     ]
 
 
-def get_category_breakdown(user_id):
-    expenses = get_expenses_by_user(user_id)
+def get_category_breakdown(user_id, date_from=None, date_to=None):
+    expenses = get_expenses_by_user(user_id, date_from, date_to)
     if not expenses:
         return []
 

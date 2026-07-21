@@ -78,13 +78,17 @@ def get_user_by_id(user_id):
         conn.close()
 
 
-def get_expenses_by_user(user_id):
+def get_expenses_by_user(user_id, date_from=None, date_to=None):
     conn = get_db()
     try:
-        return conn.execute(
-            "SELECT * FROM expenses WHERE user_id = ? ORDER BY date DESC, id DESC",
-            (user_id,),
-        ).fetchall()
+        query = "SELECT * FROM expenses WHERE user_id = ?"
+        params = [user_id]
+        if date_from and date_to:
+            # only filter when both bounds are present; a lone bound is treated as unfiltered
+            query += " AND date BETWEEN ? AND ?"
+            params.extend([date_from, date_to])
+        query += " ORDER BY date DESC, id DESC"
+        return conn.execute(query, params).fetchall()
     finally:
         conn.close()
 
