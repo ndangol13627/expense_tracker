@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, session
 from werkzeug.security import check_password_hash
@@ -25,6 +25,49 @@ CATEGORY_SLUGS = {
 }
 
 MAX_TRANSACTIONS_SHOWN = 10
+
+
+def _parse_iso_date(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _month_start(d, months_back):
+    """First day of the month that is `months_back` months before d's month."""
+    month_index = d.month - 1 - months_back
+    year = d.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def _build_filters(today, active_from, active_to, date_from_raw, date_to_raw):
+    presets_spec = [
+        ("This Month", _month_start(today, 0), today),
+        ("Last 3 Months", _month_start(today, 2), today),
+        ("Last 6 Months", _month_start(today, 5), today),
+    ]
+    presets = []
+    for label, preset_from, preset_to in presets_spec:
+        preset_from_str, preset_to_str = preset_from.isoformat(), preset_to.isoformat()
+        presets.append({
+            "label": label,
+            "url": url_for("profile", date_from=preset_from_str, date_to=preset_to_str),
+            "active": active_from == preset_from_str and active_to == preset_to_str,
+        })
+    presets.append({
+        "label": "All Time",
+        "url": url_for("profile"),
+        "active": active_from is None and active_to is None,
+    })
+
+    return {
+        "presets": presets,
+        "date_from": date_from_raw,
+        "date_to": date_to_raw,
+        "custom_active": bool(active_from) and not any(p["active"] for p in presets),
+    }
 
 
 # ------------------------------------------------------------------ #
@@ -130,7 +173,19 @@ def profile():
         "member_since": profile_user["member_since"],
     }
 
-    summary = get_summary_stats(session["user_id"])
+    date_from_raw = request.args.get("date_from", "")
+    date_to_raw = request.args.get("date_to", "")
+    date_from_obj = _parse_iso_date(date_from_raw)
+    date_to_obj = _parse_iso_date(date_to_raw)
+
+    active_from, active_to = None, None
+    if date_from_obj and date_to_obj:
+        if date_from_obj > date_to_obj:
+            flash("Start date must be before end date.", "error")
+        else:
+            active_from, active_to = date_from_raw, date_to_raw
+
+    summary = get_summary_stats(session["user_id"], date_from=active_from, date_to=active_to)
     stats = [
         {"label": "Total spent", "value": f"${summary['total_spent']:,.2f}"},
         {"label": "Transactions", "value": str(summary["transaction_count"])},
@@ -138,7 +193,9 @@ def profile():
     ]
 
     transactions = []
-    for row in get_recent_transactions(session["user_id"], limit=MAX_TRANSACTIONS_SHOWN):
+    for row in get_recent_transactions(
+        session["user_id"], limit=MAX_TRANSACTIONS_SHOWN, date_from=active_from, date_to=active_to
+    ):
         row_date = datetime.strptime(row["date"], "%Y-%m-%d").strftime("%b %d, %Y")
         slug = CATEGORY_SLUGS.get(row["category"], "other")
         transactions.append({
@@ -150,7 +207,7 @@ def profile():
         })
 
     categories = []
-    for cat in get_category_breakdown(session["user_id"]):
+    for cat in get_category_breakdown(session["user_id"], date_from=active_from, date_to=active_to):
         slug = CATEGORY_SLUGS.get(cat["name"], "other")
         width_percent = round(cat["pct"] / 5) * 5
         categories.append({
@@ -161,6 +218,8 @@ def profile():
             "width_class": f"bar-w-{width_percent}",
         })
 
+    filters = _build_filters(date.today(), active_from, active_to, date_from_raw, date_to_raw)
+
     return render_template(
         "profile.html",
         user=user,
@@ -169,6 +228,7 @@ def profile():
         categories=categories,
         transaction_count=summary["transaction_count"],
         transactions_shown=len(transactions),
+        filters=filters,
     )
 
 
